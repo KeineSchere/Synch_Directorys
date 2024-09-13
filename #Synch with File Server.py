@@ -17,23 +17,25 @@ Synch_To   = r'Y:/ExampleCopyTo/'
 Safe_Log   = r'Y:ExampleSafeLocation/'
 
 ServerDF = pd.DataFrame(columns=['Name', 'Created2', 'Modified2', 'Path2', 'Parent2'])
-NameSe = 'ServerDF'
-WinDF = pd.DataFrame(columns=['Name', 'Created', 'Modified', 'Path', 'Parent', 'Modded'])
-NameWIN = 'WinDF'
-LogDF = pd.DataFrame(columns=['Action, Time, Info'])
+NameSe   = 'ServerDF'
+WinDF    = pd.DataFrame(columns=['Name', 'Created', 'Modified', 'Path', 'Parent', 'Modded'])
+NameWIN  = 'WinDF'
+LogDF    = pd.DataFrame(columns=['Action, Time, Info'])
 CountServer = 0
-CountWin = 0
+CountWin = 0 
+TotalCount = 0
+global zehner
+zehner = 10
 
 def Get_Data(dir_path, DF, count, Name):
     for path in os.listdir(dir_path):
-           
-        print(dir_path)
-
+        global TotalCount
+        TotalCount += 1
         count += 1
 
         File_Path = dir_path + path 
                 
-        if 'desktop.ini' in File_Path or 'System Volume' in File_Path or '$RECYCLE' in File_Path:
+        if 'desktop.ini' in File_Path or 'System Volume' in File_Path or '$RECYCLE' in File_Path or 'DONT_SYNCH_DIR' in File_Path:
             LogDF._append({'Action':'Cancel Access', 
                             'Time': time, 
                             'Info': 'Windows Trash'}, ignore_index=True)
@@ -46,7 +48,7 @@ def Get_Data(dir_path, DF, count, Name):
 
             # Converting the time in seconds to a timestamp
             c_ti = time.ctime(ti_c)
-            m_ti = time.ctime(ti_m)
+            m_ti = datetime.fromtimestamp(ti_m).strftime('%Y-%m-%d %H:%M:%S')
         
             if os.path.isfile(File_Path) == True:
                 if Name == 'WinDF':
@@ -64,8 +66,7 @@ def Get_Data(dir_path, DF, count, Name):
                 
                 File_Path = File_Path + '/'
                 Get_Data(File_Path, DF, count, Name)
-        
-                print(f"{count} Objects were Counted in Directory")
+                print(f"{count} Objects were Counted in Directory: ", dir_path)
     
 def Set_Flag(MainDF):
     print("\nStart of Set_Flag")
@@ -118,7 +119,7 @@ def Create_Log(MainDF, LogDF):
     #Create a Log-File for the whole Dic. structure and changed files
     LogDF.to_csv(Safe_Path, index=False)
     MainDF.to_csv(Safe_Path, index=False, mode="a")
-    #Creates a txt file / Not recommended just use a csv!
+    #Creates a txt file / Not recommended just use a f*cking csv!
     #with open(str(Safe_Path), "x") as Log:
     #    LogDF = LogDF.to_string(header=False, index=False)
     #    WinDF = WinDF.to_string(header=True, index=True)
@@ -128,7 +129,12 @@ def Create_Log(MainDF, LogDF):
     
 def Check_Exist(WinDF, ServerDF):
     print("\nStart of check_exist")
+    global zehner
+    zehner = 0
+    
     for index, row in WinDF.iterrows():
+        show_progress(index, TotalCount_1)
+        
         try:
             check = ""
             Pa  = row.Path.replace(Synch_From, "")
@@ -140,14 +146,13 @@ def Check_Exist(WinDF, ServerDF):
                     if (row2.Name == row.Name and Pa2 == Pa):
                         #Found the same dir on server / no synch requierd
                         check = "X"
+                        break
                 except:
                     print("Error")
                 
             #Create new file/dir
             if (check == ""):
-                    
-                New_Path = Synch_To + Pa
-                    
+                New_Path = Synch_To + Pa 
                 print(New_Path)
                     
                 if os.path.isdir(row.Path):
@@ -170,8 +175,10 @@ def Check_Exist(WinDF, ServerDF):
         
 def Junk_detection(WinDF, ServerDF):
     print("\nStart of Junk_Detection")
-    for index, row2 in ServerDF.iterrows():
-        try:
+    for index, row2 in ServerDF.iterrows():    
+        show_progress(index, TotalCount_2)
+        
+        try: 
             Pa2 = row2.Path2.replace(Synch_To, "")
             check = ""
             for index, row in WinDF.iterrows():
@@ -188,7 +195,8 @@ def Junk_detection(WinDF, ServerDF):
                 
                 if os.path.isdir(local_path):
                     print("Rm dir")
-                    os.rmdir(local_path)
+                    local_path = local_path + r"/"
+                    shutil.rmtree(local_path)
                     
                 elif os.path.isfile(local_path):
                     print("Rm file")
@@ -196,13 +204,26 @@ def Junk_detection(WinDF, ServerDF):
         except:
             print("Error while running junk detection")  
     print("End of Junk_Detection\n")    
-    
+
+def show_progress(index, T_Count):
+    global zehner
+    percent = (index / T_Count)  * 100
+    if (percent >= zehner): 
+        zehner += 10
+        percent = str(round(percent, 2))
+        print("Current Progress: ", percent, "%")
+        return zehner
+            
 #-----------------------------------------------------------------
 #Start of script
 #Read client partion for synch with server
 Get_Data(Synch_From, WinDF, CountWin, NameWIN)
+TotalCount_1 = TotalCount
+print("There are ",TotalCount_1, " files to synch.")
 #Read server partion for synch with client
 Get_Data(Synch_To, ServerDF, CountServer, NameSe)
+TotalCount_2 = TotalCount - TotalCount_1
+print("In the save Folder are currently ",TotalCount_2, " files.")
 
 WinDF.drop_duplicates()
 ServerDF.drop_duplicates()

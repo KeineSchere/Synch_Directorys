@@ -6,3 +6,5 @@ Required python projects:
 Pandas   --> see https://pypi.org/project/pandas/   to install
 Ipython  --> see https://pypi.org/project/ipython/  to install
 Datetime --> see https://pypi.org/project/DateTime/ to install
+
+If you don´t want to synch a specified directorc put the following string in the name: "DONT_SYNCH_DIR"

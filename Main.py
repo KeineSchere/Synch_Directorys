@@ -2,6 +2,7 @@
 #This script synchronizes two directorys or whatever you want
 #Author: KeineSchere
 #License: GPLv3 // https://www.gnu.org/licenses/gpl-3.0.de.html
+from __future__ import print_function
 from IPython.display import display
 import os
 import pandas as pd
@@ -13,7 +14,8 @@ from datetime import datetime
 Synch_From = r'D:/ExampleCopyFrom/'
 #Replace with your directory path you want to copy to
 Synch_To   = r'Y:/ExampleCopyTo/'
-#Replace with the location you want to safe the log
+#Replace with the location you want to safe the log 
+#If you don't set a location the script don't generate a log
 Safe_Log   = r'Y:ExampleSafeLocation/'
 
 ServerDF = pd.DataFrame(columns=['Name', 'Created2', 'Modified2', 'Path2', 'Parent2'])
@@ -24,23 +26,34 @@ LogDF    = pd.DataFrame(columns=['Action, Time, Info'])
 CountServer = 0
 CountWin = 0 
 TotalCount = 0
+TotalSize = 0
+Total_Trash_Files = 0
+
 global zehner
 zehner = 10
+
+global inp
 
 def Get_Data(dir_path, DF, count, Name):
     for path in os.listdir(dir_path):
         global TotalCount
+        global TotalSize
+        global Total_Trash_Files
         TotalCount += 1
         count += 1
 
         File_Path = dir_path + path 
                 
-        if 'desktop.ini' in File_Path or 'System Volume' in File_Path or '$RECYCLE' in File_Path or 'DONT_SYNCH_DIR' in File_Path:
+        if 'desktop.ini' in File_Path or 'System Volume' in File_Path or '$RECYCLE' in File_Path:
+            Total_Trash_Files += 1
+            print("Trash: ", File_Path)
             LogDF._append({'Action':'Cancel Access', 
                             'Time': time, 
                             'Info': 'Windows Trash'}, ignore_index=True)
-            print('Fuck Windows!')
-                    
+            
+        elif 'DONT_SYNCH_DIR' in File_Path:
+            print("Script found a dir that should nor get synched: ", File_Path, end='\n')
+            Total_Trash_Files += 1
         else: 
         
             ti_c = os.path.getctime(File_Path)
@@ -51,6 +64,7 @@ def Get_Data(dir_path, DF, count, Name):
             m_ti = datetime.fromtimestamp(ti_m).strftime('%Y-%m-%d %H:%M:%S')
         
             if os.path.isfile(File_Path) == True:
+                TotalSize = TotalSize + os.path.getsize(File_Path)
                 if Name == 'WinDF':
                     DF.loc[len(DF.index)] = [path, c_ti, m_ti, File_Path, dir_path, '']  
                         
@@ -66,7 +80,8 @@ def Get_Data(dir_path, DF, count, Name):
                 
                 File_Path = File_Path + '/'
                 Get_Data(File_Path, DF, count, Name)
-                print(f"{count} Objects were Counted in Directory: ", dir_path)
+                #For debugg
+                #print(f"{count} Objects were Counted in Directory: ", dir_path)
     
 def Set_Flag(MainDF):
     print("\nStart of Set_Flag")
@@ -119,7 +134,7 @@ def Create_Log(MainDF, LogDF):
     #Create a Log-File for the whole Dic. structure and changed files
     LogDF.to_csv(Safe_Path, index=False)
     MainDF.to_csv(Safe_Path, index=False, mode="a")
-    #Creates a txt file / Not recommended just use a f*cking csv!
+    #Creates a txt file / Not recommended just use a csv!
     #with open(str(Safe_Path), "x") as Log:
     #    LogDF = LogDF.to_string(header=False, index=False)
     #    WinDF = WinDF.to_string(header=True, index=True)
@@ -170,8 +185,9 @@ def Check_Exist(WinDF, ServerDF):
                                      'Time': time, 
                                      'Info': (WinDF['Name']["new file"])}, ignore_index=True)
         except:
-            print("Error_Check_Exist")
-    print("End of check_exist\n")
+            print("Error_Check_Exist. This is fine don't worry (: (Patch coming soon!)")
+    show_progress(100,100)
+    print("\nEnd of check_exist")
         
 def Junk_detection(WinDF, ServerDF):
     print("\nStart of Junk_Detection")
@@ -181,6 +197,7 @@ def Junk_detection(WinDF, ServerDF):
         try: 
             Pa2 = row2.Path2.replace(Synch_To, "")
             check = ""
+            
             for index, row in WinDF.iterrows():
                 if (row.Name == row2.Name):
                     Pa = row.Path.replace(Synch_From, "")
@@ -191,19 +208,21 @@ def Junk_detection(WinDF, ServerDF):
                     
             if (check == ""):
                 local_path = r'%s' % row2.Path2
-                print("Removing: ", local_path)
                 
                 if os.path.isdir(local_path):
-                    print("Rm dir")
-                    local_path = local_path + r"/"
+                    local_path = local_path + r'/'
+                    print("Removing dir: ", local_path, end='\n')
                     shutil.rmtree(local_path)
+                    print("\n")
                     
                 elif os.path.isfile(local_path):
-                    print("Rm file")
+                    print("Rm file: ", local_path, end='\n')
                     os.remove(local_path)
+                    print("\n")
         except:
-            print("Error while running junk detection")  
-    print("End of Junk_Detection\n")    
+            print("Catched exeption. This is fine don't worry (: (Patch coming soon!)", end='\n')  
+    show_progress(100,100)
+    print("\nEnd of Junk_Detection")    
 
 def show_progress(index, T_Count):
     global zehner
@@ -211,19 +230,47 @@ def show_progress(index, T_Count):
     if (percent >= zehner): 
         zehner += 10
         percent = str(round(percent, 2))
-        print("Current Progress: ", percent, "%")
+        print("Current Progress: ", percent, "%", end='\r')
         return zehner
+            
+def Check_Input(Input):
+    global inp
+    IN = Input[-1]                
+    
+    inp = Input
+    
+    if (IN != '/' and IN != '\\' and IN != '' and IN != ' '):
+        inp = Input + r'/'
+        return Input
             
 #-----------------------------------------------------------------
 #Start of script
+#Check paths and fix 
+Check_Input(Synch_From)
+Synch_From = inp
+Check_Input(Synch_To)
+Synch_To = inp
+Check_Input(Safe_Log)
+Safe_Log = inp
+
+print("Script started, depending on the size to synch this could take a while!")
+
 #Read client partion for synch with server
 Get_Data(Synch_From, WinDF, CountWin, NameWIN)
-TotalCount_1 = TotalCount
-print("There are ",TotalCount_1, " files to synch.")
+TotalCount_1 = TotalCount - Total_Trash_Files
+TotalSize_1 = round(((TotalSize / 1024) / 1024),2)
+print("There are ",TotalCount_1, " files to synch. Which contains ", TotalSize_1, " MB of data.")
+
+#Resets Stats for data selection for synch_to part
+Total_Trash_Files = 0
+TotalCount = 0
+TotalSize = 0
+
 #Read server partion for synch with client
 Get_Data(Synch_To, ServerDF, CountServer, NameSe)
-TotalCount_2 = TotalCount - TotalCount_1
-print("In the save Folder are currently ",TotalCount_2, " files.")
+TotalCount_2 = TotalCount - Total_Trash_Files 
+TotalSize_2 = round(((TotalSize / 1024)/1024) ,2)
+print("In the save Folder are currently ",TotalCount_2, " files. Which contains ", TotalSize_2, " MB of data.")
 
 WinDF.drop_duplicates()
 ServerDF.drop_duplicates()
@@ -243,9 +290,12 @@ Set_Flag(MainDF)
 
 Check_Change(MainDF)
 
-#if you dont need logs make the following line to a comment
-Create_Log(MainDF, LogDF)
+#Creates the log
+if (Create_Log != '' and Create_Log != ' '):
+    Create_Log(MainDF, LogDF)
 
-print("Finished")
+print("Finished, press ENTER to close the Script")
+input_s = input()
+
 #End of script
 #-----------------------------------------------------------------

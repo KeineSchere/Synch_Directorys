@@ -7,6 +7,7 @@ from IPython.display import display
 import os
 import pandas as pd
 import time
+import datetime
 import shutil
 from datetime import datetime
 
@@ -22,7 +23,7 @@ ServerDF = pd.DataFrame(columns=['Name', 'Created2', 'Modified2', 'Path2', 'Pare
 NameSe   = 'ServerDF'
 WinDF    = pd.DataFrame(columns=['Name', 'Created', 'Modified', 'Path', 'Parent', 'Modded'])
 NameWIN  = 'WinDF'
-LogDF    = pd.DataFrame(columns=['Action, Time, Info'])
+LogDF    = pd.DataFrame(columns=['Action', 'Time', 'Info'])
 CountServer = 0
 CountWin = 0 
 TotalCount = 0
@@ -39,6 +40,7 @@ def Get_Data(dir_path, DF, count, Name):
         global TotalCount
         global TotalSize
         global Total_Trash_Files
+        global LogDF
         TotalCount += 1
         count += 1
 
@@ -47,9 +49,8 @@ def Get_Data(dir_path, DF, count, Name):
         if 'desktop.ini' in File_Path or 'System Volume' in File_Path or '$RECYCLE' in File_Path:
             Total_Trash_Files += 1
             print("Trash: ", File_Path)
-            LogDF._append({'Action':'Cancel Access', 
-                            'Time': time, 
-                            'Info': 'Windows Trash'}, ignore_index=True)
+            new_row = {'Action':'Cancel Access','Time': datetime.now(), 'Info': 'Windows Trash'}
+            LogDF = LogDF._append(new_row, ignore_index=True)
             
         elif 'DONT_SYNCH_DIR' in File_Path:
             print("Script found a dir that should nor get synched: ", File_Path, end='\n')
@@ -98,6 +99,7 @@ def Set_Flag(MainDF):
     print("End of Set_Flag\n")
 
 def Check_Change(MainDF):
+    global LogDF
     print("\nStart of Check_Changed")
     for Modified in MainDF.index:
         try: 
@@ -109,9 +111,8 @@ def Check_Change(MainDF):
                 print(Source_Path)
                 Dest_Path   = (MainDF['Parent2'][Modified])
                 
-                LogDF._append({'Action':'Updated File', 
-                               'Time': time, 
-                               'Info': (MainDF['Path'][Modified])}, ignore_index=True)
+                new_row = {'Action':'Updated File','Time': datetime.now(),'Info': (MainDF['Path'][Modified])}
+                LogDF = LogDF._append(new_row, ignore_index=True)
                    
                 #Delte modified file and copy new version of the file
                 Del_File = os.path.join(MainDF['Parent2'][Modified],MainDF['Name'][Modified])
@@ -121,9 +122,8 @@ def Check_Change(MainDF):
                 print ("Succesfully uploaded new Version")
         except:
             print("Catched")
-            LogDF._append({'Action':'Update File ERROR', 
-                            'Time': time, 
-                            'Info': (WinDF['Name'][Modified])}, ignore_index=True)
+            new_row = {'Action':'Update File ERROR','Time': datetime.now(),'Info': (WinDF['Name'][Modified])}
+            LogDF = LogDF._append(new_row, ignore_index=True)
     print("End of Check_Changed\n")
     
 def Create_Log(MainDF, LogDF):
@@ -145,6 +145,7 @@ def Create_Log(MainDF, LogDF):
 def Check_Exist(WinDF, ServerDF):
     print("\nStart of check_exist")
     global zehner
+    global LogDF
     zehner = 0
     
     for index, row in WinDF.iterrows():
@@ -173,19 +174,17 @@ def Check_Exist(WinDF, ServerDF):
                 if os.path.isdir(row.Path):
                     print("Creating directory: ", New_Path)
                     os.makedirs(New_Path)
-                        
-                    LogDF._append({'Action':'Created new dir', 
-                                     'Time': time, 
-                                     'Info': (WinDF['Name']["new dir"])}, ignore_index=True)
+
+                    new_row = {'Action':'Created new dir','Time': datetime.now(),'Info': (WinDF['Name']["new dir"])}
+                    LogDF = LogDF._append(new_row, ignore_index=True)
                         
                 elif os.path.isfile(row.Path):
                     print("Copying file: ", New_Path)
                     shutil.copy(str(row.Path), str(New_Path))
-                    LogDF._append({'Action':'Copied new file', 
-                                     'Time': time, 
-                                     'Info': (WinDF['Name']["new file"])}, ignore_index=True)
+                    new_row = {'Action':'Copied new file','Time': datetime.now(),'Info': (WinDF['Name']["new file"])}
+                    LogDF = LogDF._append(new_row, ignore_index=True)
         except:
-            print("Error_Check_Exist. This is fine don't worry (: (Patch coming soon!)")
+            print("Error_Check_Exist.")
     show_progress(100,100)
     print("\nEnd of check_exist")
         
@@ -220,7 +219,7 @@ def Junk_detection(WinDF, ServerDF):
                     os.remove(local_path)
                     print("\n")
         except:
-            print("Catched exeption. This is fine don't worry (: (Patch coming soon!)", end='\n')  
+            print("Catched exeption.", end='\n')  
     show_progress(100,100)
     print("\nEnd of Junk_Detection")    
 

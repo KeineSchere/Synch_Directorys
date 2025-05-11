@@ -1,31 +1,33 @@
-#Synch with file server
-#This script synchronizes two directorys or whatever you want
-#Author: KeineSchere
-#License: GPLv3 // https://www.gnu.org/licenses/gpl-3.0.de.html
+# Synch with file server
+# This script synchronizes two directories or whatever you want
+# Author: KeineSchere
+# License: GPLv3 // https://www.gnu.org/licenses/gpl-3.0.de.html
 from __future__ import print_function
-from IPython.display import display
 import os
 import pandas as pd
 import time
 import datetime
 import shutil
 from datetime import datetime
+import multiprocessing
 
-#Replace with your directory path you want to copy
+# Replace with your directory path you want to copy
 Synch_From = r'D:/ExampleCopyFrom/'
-#Replace with your directory path you want to copy to
+# Replace with your directory path you want to copy to
 Synch_To   = r'Y:/ExampleCopyTo/'
-#Replace with the location you want to safe the log 
-#If you don't set a location the script don't generate a log
+# Replace with the location you want to safe the log
+# If you don't set a location the script don't generate a log
 Safe_Log   = r'Y:ExampleSafeLocation/'
 
+global ServerDF
 ServerDF = pd.DataFrame(columns=['Name', 'Created2', 'Modified2', 'Path2', 'Parent2'])
 NameSe   = 'ServerDF'
-WinDF    = pd.DataFrame(columns=['Name', 'Created', 'Modified', 'Path', 'Parent', 'Modded'])
+global WinDF
+WinDF = pd.DataFrame(columns=['Name', 'Created', 'Modified', 'Path', 'Parent', 'Modded'])
 NameWIN  = 'WinDF'
 LogDF    = pd.DataFrame(columns=['Action', 'Time', 'Info'])
 CountServer = 0
-CountWin = 0 
+CountWin = 0
 TotalCount = 0
 TotalSize = 0
 Total_Trash_Files = 0
@@ -35,266 +37,312 @@ zehner = 10
 
 global inp
 
-def Get_Data(dir_path, DF, count, Name):
-    for path in os.listdir(dir_path):
-        global TotalCount
-        global TotalSize
-        global Total_Trash_Files
-        global LogDF
-        TotalCount += 1
-        count += 1
+def Get_Data(dir_path, DF, Name, results):
+    """ Sammelt rekursiv Daten von einem Verzeichnis und seinen Unterverzeichnissen
+        und speichert sie in einem DataFrame mit Fortschrittsanzeige.
 
-        File_Path = dir_path + path 
-                
-        if 'desktop.ini' in File_Path or 'System Volume' in File_Path or '$RECYCLE' in File_Path:
-            Total_Trash_Files += 1
-            print("Trash: ", File_Path)
-            new_row = {'Action':'Cancel Access','Time': datetime.now(), 'Info': 'Windows Trash'}
-            LogDF = LogDF._append(new_row, ignore_index=True)
-            
-        elif 'DONT_SYNCH_DIR' in File_Path:
-            print("Script found a dir that should nor get synched: ", File_Path, end='\n')
-            Total_Trash_Files += 1
-        else: 
-        
-            ti_c = os.path.getctime(File_Path)
-            ti_m = os.path.getmtime(File_Path)
+    Args:
+        dir_path (str): Der Pfad des zu durchsuchenden Verzeichnisses.
+        DF (pd.DataFrame): Der DataFrame, in den die Daten gespeichert werden sollen.
+        Name (str): Der Name des DataFrames ('ServerDF' oder 'WinDF').
+        results (multiprocessing.Queue): Eine Queue zur Rückgabe des befüllten DataFrames und Statistiken.
+    """
+    local_df = pd.DataFrame(columns=DF.columns)
+    local_total_count = 0
+    local_total_size = 0
+    local_total_trash_files = 0
+    local_log_entries = []
+    processed_count = 0
 
-            # Converting the time in seconds to a timestamp
-            c_ti = time.ctime(ti_c)
-            m_ti = datetime.fromtimestamp(ti_m).strftime('%Y-%m-%d %H:%M:%S')
-        
-            if os.path.isfile(File_Path) == True:
-                TotalSize = TotalSize + os.path.getsize(File_Path)
-                if Name == 'WinDF':
-                    DF.loc[len(DF.index)] = [path, c_ti, m_ti, File_Path, dir_path, '']  
-                        
-                else:
-                    DF.loc[len(DF.index)] = [path, c_ti, m_ti, File_Path, dir_path]
-                        
-            elif os.path.isdir(File_Path) == True:
-                if Name == 'WinDF':
-                    DF.loc[len(DF.index)] = [path, c_ti, m_ti, File_Path, dir_path, '']  
-                        
-                else:
-                    DF.loc[len(DF.index)] = [path, c_ti, m_ti, File_Path, dir_path]
-                
-                File_Path = File_Path + '/'
-                Get_Data(File_Path, DF, count, Name)
-                #For debugg
-                #print(f"{count} Objects were Counted in Directory: ", dir_path)
-    
+    all_items = []
+    for root, _, files in os.walk(dir_path):
+        for name in files:
+            all_items.append(os.path.join(root, name))
+        for name in os.listdir(root):
+            File_Path = os.path.join(root, name)
+            if os.path.isdir(File_Path) and 'DONT_SYNCH_DIR' not in File_Path and 'System Volume' not in File_Path and '$RECYCLE' not in File_Path:
+                all_items.append(File_Path)
+
+    total_items = len(all_items)
+    zehner_local = 1
+
+    for item_path in all_items:
+        local_total_count += 1
+        processed_count += 1
+
+        if os.path.isfile(item_path):
+            name = os.path.basename(item_path)
+            root = os.path.dirname(item_path)
+        elif os.path.isdir(item_path):
+            name = os.path.basename(item_path)
+            root = os.path.dirname(item_path)
+        else:
+            continue
+
+        if 'desktop.ini' in item_path or 'System Volume' in item_path or '$RECYCLE' in item_path:
+            local_total_trash_files += 1
+            #print("Trash: ", item_path)
+            #local_log_entries.append({'Action': 'Cancel Access', 'Time': datetime.now(), 'Info': 'Windows Trash'})
+
+        elif 'DONT_SYNCH_DIR' in item_path:
+            #print("Script found a dir that should nor get synched: ", item_path, end='\n')
+            local_total_trash_files += 1
+        else:
+            try:
+                ti_c = os.path.getctime(item_path)
+                ti_m = os.path.getmtime(item_path)
+
+                # Converting the time in seconds to a timestamp
+                c_ti = time.ctime(ti_c)
+                m_ti = datetime.fromtimestamp(ti_m).strftime('%Y-%m-%d %H:%M:%S')
+
+                if os.path.isfile(item_path):
+                    file_size = os.path.getsize(item_path)
+                    local_total_size += file_size
+                    parent_path = root
+
+                    if Name == 'WinDF':
+                        local_df.loc[len(local_df.index)] = [name, c_ti, m_ti, item_path, parent_path, '']
+                    else:
+                        local_df.loc[len(local_df.index)] = [name, c_ti, m_ti, item_path, parent_path]
+
+                elif os.path.isdir(item_path):
+                    parent_path = root
+                    if Name == 'WinDF':
+                        local_df.loc[len(local_df.index)] = [name, c_ti, m_ti, item_path, parent_path, '']
+                    else:
+                        local_df.loc[len(local_df.index)] = [name, c_ti, m_ti, item_path, parent_path]
+
+                # Lokale Fortschrittsanzeige
+                if total_items > 0:
+                    percent = (processed_count / total_items) * 100
+                    if percent >= zehner_local:
+                        zehner_local += 1
+                        percent_str = str(round(percent, 2))
+                        print(f"\n  {Name} Progress: {percent_str} %", end='\r')
+
+            except Exception as e:
+                print(f"Error processing item '{item_path}': {e}")
+
+    results.put((local_df, local_total_count, local_total_size, local_total_trash_files, local_log_entries))
+    print(f"  {Name} Progress: 100.00 %", end='\r') # Sicherstellen, dass 100% angezeigt wird
+    print() # Neue Zeile nach Abschluss
+
 def Set_Flag(MainDF):
     print("\nStart of Set_Flag")
     for ind in range(len(MainDF)):
-        #File changed
+        # File changed
         try:
-            #Check if is a file to update
+            # Check if is a file to update
             if os.path.isfile(MainDF.loc[ind, "Path"]):
                 if (MainDF.loc[ind, "Modified"]) >= (MainDF.loc[ind, 'Modified2']):
                     MainDF.loc[ind, "Modded"] = 'M'
-                    print ("Found modded: ",MainDF.Name[ind])
-        except:
-            print("Catched")        
+                    print("Found modded: ", MainDF.Name[ind])
+        except Exception as e:
+            print(f"Catched in Set_Flag: {e}")
     print("End of Set_Flag\n")
 
 def Check_Change(MainDF):
     global LogDF
     print("\nStart of Check_Changed")
     for Modified in MainDF.index:
-        try: 
+        try:
             if (MainDF['Modded'][Modified] == 'M'):
-                #Delete old file and uploade new file
+                # Delete old file and upload new file
                 print("Try Modifying")
 
                 Source_Path = (MainDF['Path'][Modified])
                 print(Source_Path)
                 Dest_Path   = (MainDF['Parent2'][Modified])
-                
-                new_row = {'Action':'Updated File','Time': datetime.now(),'Info': (MainDF['Path'][Modified])}
+                Relative_Path = os.path.relpath(Source_Path, Synch_From)
+                New_Dest_Path = os.path.join(Dest_Path, os.path.dirname(Relative_Path))
+
+                os.makedirs(New_Dest_Path, exist_ok=True)
+
+                new_row = {'Action': 'Updated File', 'Time': datetime.now(), 'Info': Source_Path}
                 LogDF = LogDF._append(new_row, ignore_index=True)
-                   
-                #Delte modified file and copy new version of the file
-                Del_File = os.path.join(MainDF['Parent2'][Modified],MainDF['Name'][Modified])
-                os.remove(Del_File)
-                print ("Removed old Version")
-                shutil.copy(str(Source_Path), str(Dest_Path))
-                print ("Succesfully uploaded new Version")
-        except:
-            print("Catched")
-            new_row = {'Action':'Update File ERROR','Time': datetime.now(),'Info': (WinDF['Name'][Modified])}
+
+                # Delete modified file and copy new version of the file
+                Del_File = os.path.join(New_Dest_Path, MainDF['Name'][Modified])
+                if os.path.exists(Del_File):
+                    os.remove(Del_File)
+                    print("Removed old Version")
+                    shutil.copy2(Source_Path, New_Dest_Path)
+                    print("Successfully uploaded new Version")
+                else:
+                    print(f"Warning: Old file not found at '{Del_File}'")
+        except Exception as e:
+            print(f"Catched in Check_Change: {e}")
+            new_row = {'Action': 'Update File ERROR', 'Time': datetime.now(), 'Info': MainDF['Name'][Modified]}
             LogDF = LogDF._append(new_row, ignore_index=True)
     print("End of Check_Changed\n")
-    
+
 def Create_Log(MainDF, LogDF):
     print("\nStart of creating Log")
     now = datetime.now()
     current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
-    Safe_Path = Safe_Log + "Log" + str(current_time)
-    #Create a Log-File for the whole Dic. structure and changed files
+    Safe_Path = os.path.join(Safe_Log, f"Log_{current_time}.csv")
+    # Create a Log-File for the whole Dic. structure and changed files
     LogDF.to_csv(Safe_Path, index=False)
     MainDF.to_csv(Safe_Path, index=False, mode="a")
-    #Creates a txt file / Not recommended just use a csv!
-    #with open(str(Safe_Path), "x") as Log:
-    #    LogDF = LogDF.to_string(header=False, index=False)
-    #    WinDF = WinDF.to_string(header=True, index=True)
-    #    Write_Log = "Win:" ,WinDF, "Server:", ServerDF
-    #    Log.write(str(Write_Log))
     print("End of creating Log\n")
-    
+
 def Check_Exist(WinDF, ServerDF):
     print("\nStart of check_exist")
     global zehner
     global LogDF
     zehner = 0
-    
+    TotalCount_1 = len(WinDF)
+
     for index, row in WinDF.iterrows():
         show_progress(index, TotalCount_1)
-        
-        try:
-            check = ""
-            Pa  = row.Path.replace(Synch_From, "")
-               
-            for index, row2 in ServerDF.iterrows():
-                try:
-                    Pa2 = row2.Path2.replace(Synch_To, "")
-                        
-                    if (row2.Name == row.Name and Pa2 == Pa):
-                        #Found the same dir on server / no synch requierd
-                        check = "X"
-                        break
-                except:
-                    print("Error")
-                
-            #Create new file/dir
-            if (check == ""):
-                New_Path = Synch_To + Pa 
-                print(New_Path)
-                    
-                if os.path.isdir(row.Path):
-                    print("Creating directory: ", New_Path)
-                    os.makedirs(New_Path)
 
-                    new_row = {'Action':'Created new dir','Time': datetime.now(),'Info': (WinDF['Name']["new dir"])}
+        try:
+            print("Check: ", row['Path'])  # Zugriff auf die Spalte 'Path' der aktuellen Zeile
+            check = ""
+            Relative_Path = os.path.relpath(row['Path'], Synch_From)
+            New_Server_Path = os.path.join(Synch_To, Relative_Path)
+
+            for index2, row2 in ServerDF.iterrows():
+                Server_Relative_Path = os.path.relpath(row2['Path2'], Synch_To)
+                if row2['Name'] == row['Name'] and Server_Relative_Path == Relative_Path:
+                    check = "X"
+                    break
+
+            # Create new file/dir
+            if (check == ""):
+                if os.path.isdir(row['Path']):
+                    print("Creating directory: ", New_Server_Path)
+                    os.makedirs(New_Server_Path, exist_ok=True)
+                    new_row = {'Action': 'Created new dir', 'Time': datetime.now(), 'Info': row['Path']}
                     LogDF = LogDF._append(new_row, ignore_index=True)
-                        
-                elif os.path.isfile(row.Path):
-                    print("Copying file: ", New_Path)
-                    shutil.copy(str(row.Path), str(New_Path))
-                    new_row = {'Action':'Copied new file','Time': datetime.now(),'Info': (WinDF['Name']["new file"])}
+
+                elif os.path.isfile(row['Path']):
+                    print("Copying file: ", New_Server_Path)
+                    os.makedirs(os.path.dirname(New_Server_Path), exist_ok=True)
+                    shutil.copy2(row['Path'], New_Server_Path)
+                    new_row = {'Action': 'Copied new file', 'Time': datetime.now(), 'Info': row['Path']}
                     LogDF = LogDF._append(new_row, ignore_index=True)
-        except:
-            print("Error_Check_Exist.")
-    show_progress(100,100)
+                else:
+                    print(f"Warning: '{row['Path']}' is neither a file nor a directory.")
+        except Exception as e:
+            print(f"Error in Check_Exist for '{row['Path']}': {e}")
+    show_progress(100, 100)
     print("\nEnd of check_exist")
-        
+
 def Junk_detection(WinDF, ServerDF):
     print("\nStart of Junk_Detection")
-    for index, row2 in ServerDF.iterrows():    
+    TotalCount_2 = len(ServerDF)
+    for index, row2 in ServerDF.iterrows():
         show_progress(index, TotalCount_2)
-        
-        try: 
-            Pa2 = row2.Path2.replace(Synch_To, "")
+
+        try:
+            Server_Relative_Path = os.path.relpath(row2.Path2, Synch_To)
             check = ""
-            
+
             for index, row in WinDF.iterrows():
-                if (row.Name == row2.Name):
-                    Pa = row.Path.replace(Synch_From, "")
-                    
-                    if (Pa2 == Pa):  
-                        check = 'X'
-                        break
-                    
+                Win_Relative_Path = os.path.relpath(row.Path, Synch_From)
+                if row.Name == row2.Name and Win_Relative_Path == Server_Relative_Path:
+                    check = 'X'
+                    break
+
             if (check == ""):
-                local_path = r'%s' % row2.Path2
-                
+                local_path = row2.Path2
+
                 if os.path.isdir(local_path):
-                    local_path = local_path + r'/'
                     print("Removing dir: ", local_path, end='\n')
-                    shutil.rmtree(local_path)
+                    shutil.rmtree(local_path, ignore_errors=True)
                     print("\n")
-                    
+
                 elif os.path.isfile(local_path):
                     print("Rm file: ", local_path, end='\n')
                     os.remove(local_path)
                     print("\n")
-        except:
-            print("Catched exeption.", end='\n')  
-    show_progress(100,100)
-    print("\nEnd of Junk_Detection")    
+        except Exception as e:
+            print(f"Catched exception in Junk_detection for '{row2.Path2}': {e}", end='\n')
+    show_progress(100, 100)
+    print("\nEnd of Junk_Detection")
 
 def show_progress(index, T_Count):
     global zehner
-    percent = (index / T_Count)  * 100
-    if (percent >= zehner): 
-        zehner += 10
-        percent = str(round(percent, 2))
-        print("Current Progress: ", percent, "%", end='\r')
-        return zehner
-            
+    if T_Count > 0:
+        percent = (index / T_Count) * 100
+        if (percent >= zehner):
+            zehner += 10
+            percent_str = str(round(percent, 2))
+            print(f"Current Progress: {percent_str} %", end='\r')
+    return zehner
+
 def Check_Input(Input):
     global inp
-    IN = Input[-1]                
-    
     inp = Input
-    
-    if (IN != '/' and IN != '\\' and IN != '' and IN != ' '):
-        inp = Input + r'/'
-        return Input
-            
-#-----------------------------------------------------------------
-#Start of script
-#Check paths and fix 
-Check_Input(Synch_From)
-Synch_From = inp
-Check_Input(Synch_To)
-Synch_To = inp
-Check_Input(Safe_Log)
-Safe_Log = inp
+    if (Input and Input[-1] not in ('/', '\\')):
+        inp = Input + os.sep
+    return inp
+
+# -----------------------------------------------------------------
+# Start of script
+# Check paths and fix
+Synch_From = Check_Input(Synch_From)
+Synch_To = Check_Input(Synch_To)
+Safe_Log = Check_Input(Safe_Log)
 
 print("Script started, depending on the size to synch this could take a while!")
 
-#Read client partion for synch with server
-Get_Data(Synch_From, WinDF, CountWin, NameWIN)
-TotalCount_1 = TotalCount - Total_Trash_Files
-TotalSize_1 = round(((TotalSize / 1024) / 1024),2)
-print("There are ",TotalCount_1, " files to synch. Which contains ", TotalSize_1, " MB of data.")
+# Use multiprocessing to get data from both directories concurrently
+if __name__ == '__main__':
+    manager = multiprocessing.Manager()
+    results_queue = manager.Queue()
+    processes = []
 
-#Resets Stats for data selection for synch_to part
-Total_Trash_Files = 0
-TotalCount = 0
-TotalSize = 0
+    p1 = multiprocessing.Process(target=Get_Data, args=(Synch_From, pd.DataFrame(columns=['Name', 'Created', 'Modified', 'Path', 'Parent', 'Modded']), NameWIN, results_queue))
+    processes.append(p1)
+    p1.start()
 
-#Read server partion for synch with client
-Get_Data(Synch_To, ServerDF, CountServer, NameSe)
-TotalCount_2 = TotalCount - Total_Trash_Files 
-TotalSize_2 = round(((TotalSize / 1024)/1024) ,2)
-print("In the save Folder are currently ",TotalCount_2, " files. Which contains ", TotalSize_2, " MB of data.")
+    p2 = multiprocessing.Process(target=Get_Data, args=(Synch_To, pd.DataFrame(columns=['Name', 'Created2', 'Modified2', 'Path2', 'Parent2']), NameSe, results_queue))
+    processes.append(p2)
+    p2.start()
 
-WinDF.drop_duplicates()
-ServerDF.drop_duplicates()
+    result_win = results_queue.get()
+    result_server = results_queue.get()
 
-#Deletes asynch files and directorys
-Junk_detection(WinDF, ServerDF)
+    WinDF, total_count_1, total_size_1, total_trash_files_1, log_entries_win = result_win
+    ServerDF, total_count_2, total_size_2, total_trash_files_2, log_entries_server = result_server
 
-#Check if corrosponding file and directory is destination side
-# and uploade/creat new directory or files
-Check_Exist(WinDF, ServerDF)
+    TotalCount_1 = total_count_1 - total_trash_files_1
+    TotalSize_1 = round(((total_size_1 / 1024) / 1024), 2)
+    LogDF = LogDF._append(log_entries_win, ignore_index=True)
+    print(f"There are {TotalCount_1} files to synch. Which contains {TotalSize_1} MB of data.")
 
-MainDF = pd.merge(WinDF, ServerDF, how="inner", on=["Name"])
-MainDF.drop_duplicates()
+    TotalCount_2 = total_count_2 - total_trash_files_2
+    TotalSize_2 = round(((total_size_2 / 1024) / 1024), 2)
+    LogDF = LogDF._append(log_entries_server, ignore_index=True)
+    print(f"In the save Folder are currently {TotalCount_2} files. Which contains {TotalSize_2} MB of data.")
 
-#Modifying files that exists on both systems in the same directory
-Set_Flag(MainDF)
+    for p in processes:
+        p.join()
 
-Check_Change(MainDF)
+    WinDF.drop_duplicates(inplace=True)
+    ServerDF.drop_duplicates(inplace=True)
 
-#Creates the log
-if (Create_Log != '' and Create_Log != ' '):
-    Create_Log(MainDF, LogDF)
+    # Deletes asynch files and directorys
+    Junk_detection(WinDF, ServerDF)
 
-print("Finished, press ENTER to close the Script")
-input_s = input()
+    # Check if corresponding file and directory is destination side
+    # and upload/create new directory or files
+    Check_Exist(WinDF, ServerDF) # Hier sollten WinDF und ServerDF nun die befüllten DataFrames sein
 
-#End of script
-#-----------------------------------------------------------------
+    MainDF = pd.merge(WinDF, ServerDF, how="inner", on=["Name"])
+    MainDF.drop_duplicates(inplace=True)
+
+    # Modifying files that exists on both systems in the same directory
+    Set_Flag(MainDF)
+
+    Check_Change(MainDF)
+
+    # Creates the log
+    if Safe_Log:
+        Create_Log(MainDF, LogDF)
+
+    print("Finished, press ENTER to close the Script")
+    input_s = input()

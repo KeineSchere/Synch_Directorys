@@ -6,7 +6,7 @@ Short Info:
   1. What does this script?
     - The script is thought to synch two directorys or whatever you want.
   2. How to use it?
-    - To use it correctly you have to change the 3 paths at the top of the script. (Called: Synch_From, Synch_From, Safe_Log)
+    - To use it correctly you have to change the 3 paths at the top of the script. (Called: Synch_From, Synch_To, Safe_Log)
     - You also need a python interpreter and the at the button mentioned pip projects. (Technicly required)
     - Make sure that your user has the rights to change/delete the directorys and files!
     
